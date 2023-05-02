@@ -35,7 +35,7 @@ async def get_video_info(sku: str):
             samples['img-'+str(i)] = f"{sku}?n={i:02d}"
         except:
             samples['img-'+str(i)] = ""
-    dic['sample_image'] = samples
+    dic['sample_images'] = samples
     return jsonable_encoder(dic)
 
 @app.get("/images/{sku}")
