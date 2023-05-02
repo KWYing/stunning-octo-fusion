@@ -1,3 +1,4 @@
+import os
 from fastapi import FastAPI
 from fastapi.responses import FileResponse
 from dotenv import load_dotenv
@@ -28,7 +29,16 @@ async def get_video_info(sku: str):
     dic['sample_image'] = samples
     return dic
 
-@app.get("/image/{path}")
-async def display_cover_image(path:str):
-    link = "images/abw00003/abw00003-cover.jpg"
+@app.get("/images/{sku}")
+async def display_cover_image(sku:str, n:int=None):
+    base = os.getenv('IMAGE_PATH')
+    avid, _ , _ = get_info.split_sku(sku)
+    if n:
+        link = os.path.join(base, os.path.join( 
+            avid, f"{avid}-{n:02d}.jpg"
+        ))
+    else:
+        link = os.path.join(base, os.path.join(
+            avid, f"{avid}-cover.jpg"
+        ))
     return FileResponse(link, media_type='image/jpg')
