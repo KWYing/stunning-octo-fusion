@@ -46,7 +46,7 @@ async def get_video_info(sku: str):
 @app.get("/images/{sku}")
 async def display_cover_image(sku:str, n:int=None):
     if sku not in data.keys():
-        raise HTTPException(status_code=400, detail="Image Not found")
+        raise HTTPException(status_code=404, detail="Image Not found")
     base = os.getenv('IMAGE_PATH')
     avid, _ , _ = get_info.split_sku(sku)
     if n:
