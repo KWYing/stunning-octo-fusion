@@ -1,4 +1,5 @@
 import os
+import json
 import requests
 from bs4 import BeautifulSoup as bs
 
@@ -73,3 +74,13 @@ def get_images(sku, is_dmm=True, index=None):
     if index is None:
         return cover_image()
     return single_image()
+
+def load_file():
+    if not os.path.exists('db.json'):
+        return {}
+    with open('db.json') as f:
+        return json.load(f)
+    
+def save_file(dic):
+    with  open('db.json', 'w') as f:
+        json.dump(dic, f, indent=4)
