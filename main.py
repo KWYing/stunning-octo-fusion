@@ -1,60 +1,104 @@
+"""Simple REST api using fastapi"""
 import os
-from fastapi import FastAPI, HTTPException
+from typing import List
+from fastapi import FastAPI, HTTPException, Response
 from fastapi.responses import FileResponse
-from fastapi.encoders import jsonable_encoder
+from pymongo import MongoClient, DESCENDING
+
 from dotenv import load_dotenv
+
+from webparser.get_info import get_video_info
+from database.schema import InfoResponse
 
 load_dotenv()
 
-from webparser import get_info
+
+# MongoDB
+client = MongoClient(os.getenv('MONGODB'))
+db = client['av']
+
 
 app = FastAPI()
 
-data = get_info.load_file()
 
 @app.get("/")
 async def root():
-    return {"message": "Hello World"}
+    """Home Page"""
+    return {'message': 'Welcome'}
 
-@app.get("/get/{sku}")
-async def get_video_info(sku: str):
-    if sku not in data.keys():     
-        try:
-            dic = get_info.get_video_info(sku)
-        except:
-            dic = {}
-        is_dmm = True if get_info.split_sku(
-            sku)[1] not in ['abp', 'abw'] else False
-        try:
-            get_info.get_images(sku, is_dmm=is_dmm)
-            dic['cover_image'] = f"/images/{sku}" 
-        except:
-            dic['cover_image'] = ""
-        samples = {}
-        for i in range(1,13):
-            try:
-                get_info.get_images(sku, is_dmm, index=i)
-                samples['img-'+str(i)] = f"/images/{sku}?n={i:02d}"
-            except:
-                samples['img-'+str(i)] = ""
-        dic['sample_images'] = samples
-        # save the info to data
-        data[sku] = dic
-        get_info.save_file(data)
-    return jsonable_encoder(data[sku])
 
-@app.get("/images/{sku}")
-async def display_cover_image(sku:str, n:int=None):
-    if sku not in data.keys():
-        raise HTTPException(status_code=404, detail="Image Not found")
-    base = os.getenv('IMAGE_PATH')
-    avid, _ , _ = get_info.split_sku(sku)
-    if n:
-        link = os.path.join(base, os.path.join( 
-            avid, f"{avid}-{n:02d}.jpg"
-        ))
+@app.get("/all", response_model=List[InfoResponse])
+async def get_all():
+    """Get all items"""
+    items = db['info'].find().sort('release_date', DESCENDING)
+    return [InfoResponse(id=str(item['_id']), **item) for item in items]
+
+
+@app.get("/get/{sku}", response_model=InfoResponse)
+async def get_info(sku: str):
+    """Get info from database"""
+    item = db['info'].find_one({"sku": sku})
+    if item is None:
+        return HTTPException(status_code=404, detail="Image not found")
+    return InfoResponse(id=str(item['_id']), **item)
+
+
+@app.get("/actress/{name}", response_model=List[InfoResponse])
+async def get_actress(name: str):
+    """Get all actress items from database"""
+    items = db['info'].find().sort('release_date', DESCENDING)
+    videos = []
+    for item in items:
+        if name in item['actress']:
+            videos.append(
+                InfoResponse(id=str(item['_id']), **item)
+            )
+    if items is None:
+        return HTTPException(status_code=404, detail="Image not found")
+    return videos
+
+
+@app.post("/insert/{sku}", response_model=InfoResponse)
+async def insert_info(sku: str):
+    """Insert info to database"""
+    item = db['info'].find_one({"sku": sku})
+    if item is not None:
+        return HTTPException(status_code=505, detail="Item already in database")
+    # Get video info
+    item_dict = get_video_info(sku)
+    # Add actress
+    actress = item_dict['actress']
+    if ',' in actress:
+        item_dict['actress'] = [_.strip() for _ in actress.split(',')]
     else:
-        link = os.path.join(base, os.path.join(
-            avid, f"{avid}-cover.jpg"
-        ))
-    return FileResponse(link, media_type='image/jpg')
+        item_dict['actress'] = [actress]
+    item_id = db['info'].insert_one(item_dict).inserted_id
+    item = db['info'].find_one({'_id': item_id})
+    return InfoResponse(id=str(item['_id']), **item)
+
+
+@app.get("/image/{sku}")
+async def show_cover_image(sku: str):
+    """Show cover image"""
+    item = db['info'].find_one({"sku": sku})
+    if item is None:
+        return HTTPException(status_code=404, detail="Image not found")
+    img_path = item['cover_image']
+    return FileResponse(img_path, media_type='image/jpeg')
+
+
+@app.delete("/delete/{sku}")
+async def delete_item(sku: str):
+    """Delete an item"""
+    item = db['info'].find_one({'sku': sku})
+    if item is None:
+        return HTTPException(status_code=404, detail="Item not found")
+    db['info'].delete_one({'sku': sku})
+    return Response(status_code=200)
+
+
+@app.delete("/delete-all")
+async def delete_all():
+    """Delete all items"""
+    db['info'].delete_many({})
+    return Response(status_code=200)
