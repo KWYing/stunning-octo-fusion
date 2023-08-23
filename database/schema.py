@@ -18,3 +18,13 @@ class Info(BaseModel):
 class InfoResponse(Info):
     """Info Response Model"""
     id: str
+
+
+class Actress(BaseModel):
+    """Actress Base Model"""
+    name: str
+    videos: List[str]
+
+class ActressResponse(Actress):
+    """Actress Response"""
+    id: str
