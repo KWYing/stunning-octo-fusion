@@ -8,7 +8,7 @@ from pymongo import MongoClient, DESCENDING
 from dotenv import load_dotenv
 
 from webparser.get_info import get_video_info
-from database.schema import InfoResponse
+from database.schema import InfoResponse, ActressResponse
 
 load_dotenv()
 
@@ -43,18 +43,25 @@ async def get_info(sku: str):
     return InfoResponse(id=str(item['_id']), **item)
 
 
+@app.get("/get-actress", response_model=List[ActressResponse])
+async def get_all_actress():
+    """Get all actress in database"""
+    acts = db['actress'].find()
+    return [ActressResponse(id=str(act['_id']), **act) for act in acts]
+
+
 @app.get("/actress/{name}", response_model=List[InfoResponse])
 async def get_actress(name: str):
     """Get all actress items from database"""
-    items = db['info'].find().sort('release_date', DESCENDING)
+    acts = db['actress'].find_one({"name": name})
+    if acts is None:
+        return HTTPException(status_code=404, detail="Actress not found")
     videos = []
-    for item in items:
-        if name in item['actress']:
-            videos.append(
-                InfoResponse(id=str(item['_id']), **item)
+    for sku in acts["videos"]:
+        item = db['info'].find_one({"sku": sku})
+        videos.append(
+            InfoResponse(id=str(item['_id']), **item)
             )
-    if items is None:
-        return HTTPException(status_code=404, detail="Image not found")
     return videos
 
 
@@ -72,6 +79,13 @@ async def insert_info(sku: str):
         item_dict['actress'] = [_.strip() for _ in actress.split(',')]
     else:
         item_dict['actress'] = [actress]
+    # Add video to actress
+    for actress in item_dict['actress']:
+        act = db['actress'].find_one({"name": actress})
+        if act is not None:
+            db['actress'].update_one({"name": actress}, {"$push":{"videos": sku}}, upsert=True)
+        db['actress'].insert_one({"name": actress, "videos": [sku]})
+    # Once actress is added add video info
     item_id = db['info'].insert_one(item_dict).inserted_id
     item = db['info'].find_one({'_id': item_id})
     return InfoResponse(id=str(item['_id']), **item)
@@ -87,18 +101,19 @@ async def show_cover_image(sku: str):
     return FileResponse(img_path, media_type='image/jpeg')
 
 
-@app.delete("/delete/{sku}")
-async def delete_item(sku: str):
-    """Delete an item"""
-    item = db['info'].find_one({'sku': sku})
-    if item is None:
-        return HTTPException(status_code=404, detail="Item not found")
-    db['info'].delete_one({'sku': sku})
-    return Response(status_code=200)
+# @app.delete("/delete/{sku}")
+# async def delete_item(sku: str):
+#     """Delete an item"""
+#     item = db['info'].find_one({'sku': sku})
+#     if item is None:
+#         return HTTPException(status_code=404, detail="Item not found")
+#     db['info'].delete_one({'sku': sku})
+#     return Response(status_code=200)
 
 
-@app.delete("/delete-all")
-async def delete_all():
-    """Delete all items"""
+@app.delete("/reset")
+async def reset_database():
+    """Delete all items to reset database"""
     db['info'].delete_many({})
+    db['actress'].delete_many({})
     return Response(status_code=200)
