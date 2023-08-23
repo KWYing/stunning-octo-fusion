@@ -84,7 +84,8 @@ async def insert_info(sku: str):
         act = db['actress'].find_one({"name": actress})
         if act is not None:
             db['actress'].update_one({"name": actress}, {"$push":{"videos": sku}}, upsert=True)
-        db['actress'].insert_one({"name": actress, "videos": [sku]})
+        else:
+            db['actress'].insert_one({"name": actress, "videos": [sku]})
     # Once actress is added add video info
     item_id = db['info'].insert_one(item_dict).inserted_id
     item = db['info'].find_one({'_id': item_id})
